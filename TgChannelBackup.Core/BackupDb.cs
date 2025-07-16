@@ -31,20 +31,21 @@ public class BackupDb : IDisposable
 
     public void Upsert(long channelId, DateTime dateTime, int messageId, long? fileId, string hash, string metadataFileName)
     {
-        var channel = _channels.FindById(channelId);
-        if (channel is null)
-            _channels.Insert(channel = new ChannelRecord() { ChannelId = channelId, Days = [] });
+        // TODO Must have different methods for posts and files
+        /* var channel = _channels.FindById(channelId); */
+        /* if (channel is null) */
+        /*     _channels.Insert(channel = new ChannelRecord() { ChannelId = channelId, Days = [] }); */
 
-        var day = channel.Days.FirstOrDefault(d => d.Date == DateOnly.FromDateTime(dateTime));
-        if (day is null)
-            channel.Days.Add(day = new DayRecord() { Date = DateOnly.FromDateTime(dateTime), Posts = []});
+        /* var day = channel.Days.FirstOrDefault(d => d.Date == DateOnly.FromDateTime(dateTime)); */
+        /* if (day is null) */
+        /*     channel.Days.Add(day = new DayRecord() { Date = DateOnly.FromDateTime(dateTime), Posts = []}); */
 
-        var post = day.Posts.FirstOrDefault(p => p.MessageId == messageId);
-        if (post is null)
-            day.Posts.Add(post = new PostRecord() { MessageId = messageId, Time = TimeOnly.FromDateTime(dateTime), MetadataFileName = metadataFileName, Files = [] });
+        /* var post = day.Posts.FirstOrDefault(p => p.MessageId == messageId); */
+        /* if (post is null) */
+        /*     day.Posts.Add(post = new PostRecord() { MessageId = messageId, Time = TimeOnly.FromDateTime(dateTime), MetadataFileName = metadataFileName, Files = [] }); */
 
-        if (fileId != null)
-            post.Files.Add(new FileRecord() { FileId = fileId.Value, Hash = hash });
+        /* if (fileId != null) */
+        /*     post.Files.Add(new FileRecord() { FileId = fileId.Value, Hash = hash }); */
     }
 
     public void Dispose()

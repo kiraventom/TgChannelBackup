@@ -12,6 +12,12 @@ public class TelegramService : IAsyncDisposable
     public TelegramService(ILogger<TelegramService> logger)
     {
         _logger = logger;
+        WTelegram.Helpers.Log = (lvl, msg) => 
+        {
+            if (lvl is >= (int)LogLevel.Warning and < (int)LogLevel.None)
+                logger.Log((LogLevel)lvl, msg);
+        }; 
+
         _client = new Client(Config);
     }
 
@@ -69,7 +75,7 @@ public class TelegramService : IAsyncDisposable
                     add_offset: 0,
                     limit: limit,
                     max_id: 0,
-                    min_id: minId);
+                    min_id: minId - 1);
 
             if (history.Messages.Length == 0)
                 break;

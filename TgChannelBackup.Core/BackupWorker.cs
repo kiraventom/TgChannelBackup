@@ -1,7 +1,9 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 using Serilog.Events;
 using TL;
 
@@ -68,10 +70,11 @@ public class BackupWorker : BackgroundService
             hash = "TODO";
         }
 
-        string metadataFilePath = Path.Combine(postPath, "metadata.json");
+        string metadataFilePath = Path.Combine(postPath, $"metadata_{message.ID}{(fileId != null ? $"_{fileId.Value}" : string.Empty)}.json");
+
         if (!_options.DryRun)
         {
-            var metadata = JsonSerializer.Serialize(message, AppOptions.Serializer);
+            var metadata = JsonConvert.SerializeObject(message, AppOptions.JsonSettings);
             await File.WriteAllTextAsync(metadataFilePath, metadata, ct);
         }
 
