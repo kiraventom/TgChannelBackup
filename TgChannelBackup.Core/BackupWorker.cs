@@ -1,10 +1,7 @@
-using System.Security.Cryptography;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
-using Serilog.Events;
+using TgChannelBackup.Core.Downloader;
 using TL;
 
 namespace TgChannelBackup.Core;
@@ -14,13 +11,17 @@ public class BackupWorker : BackgroundService
     private readonly TelegramService _telegramService;
     private readonly BackupDb _backupDb;
     private readonly RunOptions _options;
+    private readonly PhotoDownloader _photoDownloader;
+    private readonly DocumentDownloader _documentDownloader;
     private readonly ILogger<BackupWorker> _logger;
 
-    public BackupWorker(TelegramService telegramService, BackupDb archiveIndex, RunOptions options, ILogger<BackupWorker> logger)
+    public BackupWorker(TelegramService telegramService, BackupDb archiveIndex, RunOptions options, PhotoDownloader photoDownloader, DocumentDownloader documentDownloader, ILogger<BackupWorker> logger)
     {
         _telegramService = telegramService;
         _backupDb = archiveIndex;
         _options = options;
+        _photoDownloader = photoDownloader;
+        _documentDownloader = documentDownloader;
         _logger = logger;
     }
 
@@ -32,6 +33,7 @@ public class BackupWorker : BackgroundService
         _logger.LogInformation("Starting at message_id={message_id}", lastId);
 
         var channel = await _telegramService.GetChannelById(_options.ChannelId);
+
         await foreach (var messageBase in _telegramService.ScrollHistory(channel, minId: (int)lastId))
         {
             if (messageBase is not Message message)
@@ -56,20 +58,23 @@ public class BackupWorker : BackgroundService
         if (!_options.DryRun)
             Directory.CreateDirectory(postPath);
 
-        long? fileId = null;
-        string hash = null;
+        DownloadResult result = null;
         if (message.media is MessageMediaPhoto photo)
         {
-            fileId = await DownloadPhotoIfNeeded(photo, postPath, ct);
-            hash = "TODO";
+            result = await _photoDownloader.Download(postPath, photo);
         }
         else if (message.media is MessageMediaDocument document)
         {
-            await DownloadDocumentIfNeeded(document, postPath, ct);
-            fileId = 2;
-            hash = "TODO";
+            result = await _documentDownloader.Download(postPath, document);
         }
 
+        if (result != null && !result.Success)
+        {
+            _logger.LogError("Error during downloading {fileId}: {error}", result.FileId, result.ErrorMessage);
+            return;
+        }
+
+        var fileId = result?.FileId;
         string metadataFilePath = Path.Combine(postPath, $"metadata_{message.ID}{(fileId != null ? $"_{fileId.Value}" : string.Empty)}.json");
 
         if (!_options.DryRun)
@@ -78,52 +83,8 @@ public class BackupWorker : BackgroundService
             await File.WriteAllTextAsync(metadataFilePath, metadata, ct);
         }
 
-        _backupDb.Upsert(message.Peer.ID, message.Date.ToLocalTime(), message.ID, fileId, hash, metadataFilePath);
+        /* _backupDb.Upsert(message.Peer.ID, message.Date.ToLocalTime(), message.ID, fileId, hash, metadataFilePath); */
         _logger.LogInformation("Processed post {messageID} from {date}", message.ID, message.Date);
-    }
-
-    private async Task<long> DownloadPhotoIfNeeded(MessageMediaPhoto photo, string postPath, CancellationToken ct)
-    {
-        var filePath = Path.ChangeExtension(Path.Combine(postPath, photo.photo.ID.ToString()), "png");
-        bool fileExists = File.Exists(filePath);
-
-        var tempPath = Path.GetTempFileName();
-        await _telegramService.DownloadFile(photo, tempPath);
-
-        bool writeFile = true;
-        if (fileExists)
-        {
-            writeFile = false;
-
-            var newHash = GetMD5(tempPath);
-            var existingHash = GetMD5(filePath); // TODO Database
-            if (!newHash.Equals(existingHash, StringComparison.OrdinalIgnoreCase))
-            {
-                _logger.LogWarning("File {path} hash mismatch, {existingHash} != {newHash}", filePath, existingHash, newHash);
-                if (_options.Reconcile)
-                    writeFile = true;
-            }
-        }
-
-        if (writeFile && !_options.DryRun)
-        {
-            if (fileExists)
-                File.Delete(filePath);
-
-            File.Copy(tempPath, filePath);
-        }
-
-        File.Delete(tempPath);
-
-        var logLevel = _options.DryRun ? LogLevel.Information : LogLevel.Debug;
-        _logger.Log(logLevel, "Write file at '{path}'", filePath);
-
-        return photo.photo.ID;
-    }
-
-    private async Task DownloadDocumentIfNeeded(MessageMediaDocument doc, string path, CancellationToken ct)
-    {
-        // TODO
     }
 
     private static string BuildPath(string basePath, Message message)
@@ -135,17 +96,13 @@ public class BackupWorker : BackgroundService
 
         return Path.Combine(basePath, $"channel_{message.Peer.ID}", date.ToString("yyyy-MM-dd"), $"post_{postId}_{date.ToString("HH-mm-ss")}");
     }
+}
 
-    private static string GetMD5(string filePath)
-    {
-        using var stream = File.OpenRead(filePath);
-        return GetMD5(stream);
-    }
-
-    private static string GetMD5(Stream stream)
-    {
-        using var md5 = MD5.Create();
-        var hashArr = md5.ComputeHash(stream);
-        return BitConverter.ToString(hashArr).Replace("-", "").ToLowerInvariant();
-    }
+public record DownloadResult
+{
+    public bool Success { get; init; }
+    public string Path { get; init; }
+    public long FileId { get; init; }
+    public string Hash { get; init; }
+    public string ErrorMessage { get; init; }
 }

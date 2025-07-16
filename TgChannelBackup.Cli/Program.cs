@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Serilog;
 using Serilog.Events;
 using TgChannelBackup.Core;
+using TgChannelBackup.Core.Downloader;
 
 namespace TgChannelBackup.Cli;
 
@@ -28,6 +29,12 @@ public static class Program
 
         var logger = loggerConfig.CreateLogger();
 
+        WTelegram.Helpers.Log = (lvl, msg) => 
+        {
+            if (lvl is >= (int)LogEventLevel.Warning)
+                logger.Write((LogEventLevel)lvl, msg);
+        }; 
+
         var runOptions = BuildRunOptions(logger, args);
         if (runOptions is null)
             return 1;
@@ -39,6 +46,8 @@ public static class Program
             .AddSingleton(runOptions)
             .AddSingleton<BackupDb>(c => new BackupDb(backupPath))
             .AddSingleton<TelegramService>()
+            .AddSingleton<PhotoDownloader>()
+            .AddSingleton<DocumentDownloader>()
             .AddHostedService<BackupWorker>();
 
         await builder.Build().RunAsync();

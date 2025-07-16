@@ -12,12 +12,6 @@ public class TelegramService : IAsyncDisposable
     public TelegramService(ILogger<TelegramService> logger)
     {
         _logger = logger;
-        WTelegram.Helpers.Log = (lvl, msg) => 
-        {
-            if (lvl is >= (int)LogLevel.Warning and < (int)LogLevel.None)
-                logger.Log((LogLevel)lvl, msg);
-        }; 
-
         _client = new Client(Config);
     }
 
@@ -26,8 +20,8 @@ public class TelegramService : IAsyncDisposable
         "api_id" => Environment.GetEnvironmentVariable("TG_API_ID"),
         "api_hash" => Environment.GetEnvironmentVariable("TG_API_HASH"),
         "phone_number" => Environment.GetEnvironmentVariable("TG_PHONE"),
-        "verification_code" => GetVerificationCode(),
         "password" => Environment.GetEnvironmentVariable("TG_PASSWORD"),
+        "verification_code" => GetVerificationCode(),
         _ => null
     };
 
@@ -54,6 +48,12 @@ public class TelegramService : IAsyncDisposable
         await using var fs = File.OpenWrite(path);
         await _client.DownloadFileAsync((Photo)photo.photo, fs);
     }
+
+    public async Task DownloadFile(MessageMediaDocument document, string path)
+    {
+        await using var fs = File.OpenWrite(path);
+        await _client.DownloadFileAsync((Document)document.document, fs);
+    }
     
     public async Task<InputPeerChannel> GetChannelById(long channelId)
     {
@@ -78,7 +78,7 @@ public class TelegramService : IAsyncDisposable
                     min_id: minId - 1);
 
             if (history.Messages.Length == 0)
-                break;
+                break; // TODO Delay
 
             foreach (var message in history.Messages.OrderBy(m => m.ID))
                 yield return message;
