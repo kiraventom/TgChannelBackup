@@ -49,31 +49,38 @@ public abstract class MediaDownloader<T> where T : MessageMedia
         var newHash = GetMD5(tempPath);
 
         bool writeFile = true;
+        bool hashMismatch = false;
         if (fileExists)
         {
             writeFile = false;
 
             var existingHash = GetMD5(filePath); // TODO Database
-            if (!newHash.Equals(existingHash, StringComparison.OrdinalIgnoreCase))
+            hashMismatch = !newHash.Equals(existingHash, StringComparison.OrdinalIgnoreCase);
+            if (hashMismatch)
             {
                 _logger.LogWarning("File {path} hash mismatch, {existingHash} != {newHash}", filePath, existingHash, newHash);
                 if (_runOptions.Reconcile)
                     writeFile = true;
             }
+            else
+            {
+                _logger.LogInformation("Hashes match at '{path}'", filePath);
+            }
         }
 
-        if (writeFile && !_runOptions.DryRun)
+        if (_runOptions.DryRun)
+            writeFile = false;
+
+        if (writeFile)
         {
             if (fileExists)
                 File.Delete(filePath);
 
             File.Copy(tempPath, filePath);
+            _logger.LogInformation("Write file at '{path}'", filePath);
         }
 
         File.Delete(tempPath);
-
-        var logLevel = _runOptions.DryRun ? LogLevel.Information : LogLevel.Debug;
-        _logger.Log(logLevel, "Write file at '{path}'", filePath);
 
         return new DownloadResult()
         {
@@ -81,6 +88,8 @@ public abstract class MediaDownloader<T> where T : MessageMedia
             FileId = GetFileId(media),
             Path = filePath,
             Hash = newHash,
+            Write = writeFile,
+            HashMismatch = hashMismatch
         };
     }
 

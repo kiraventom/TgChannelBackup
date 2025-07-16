@@ -63,19 +63,21 @@ public class TelegramService : IAsyncDisposable
         return inputPeerChannel;
     }
 
-    public async IAsyncEnumerable<MessageBase> ScrollHistory(InputPeerChannel channel, int minId = 0)
+    public async IAsyncEnumerable<MessageBase> ScrollHistory(InputPeerChannel channel, int start)
     {
-        int offset = 0;
+        /* int offset = await CalculateOffset(channel, start); */
+        int offset = start != 0 ? start : await GetFirstMessageId(channel);
+
         const int limit = 100;
         while (true)
         {
             var history = await _client.Messages_GetHistory(
                     channel,
                     offset_id: offset,
-                    add_offset: 0,
-                    limit: limit,
-                    max_id: 0,
-                    min_id: minId - 1);
+                    add_offset: -limit,
+                    limit: limit);
+
+            // TODO Fix stalling on last message
 
             if (history.Messages.Length == 0)
                 break; // TODO Delay
@@ -83,7 +85,27 @@ public class TelegramService : IAsyncDisposable
             foreach (var message in history.Messages.OrderBy(m => m.ID))
                 yield return message;
 
-            offset = history.Messages[^1].ID;
+            offset = history.Messages.Max(m => m.ID);
+        }
+    }
+
+    private async Task<int> GetFirstMessageId(InputPeerChannel channel)
+    {
+        var history = await _client.Messages_GetHistory(channel);
+        if (history.Messages.Length == 0)
+            return 0; // channel is empty
+
+        const int count = 100;
+        for (int i = 1; ; i += count)
+        {
+            var ids = Enumerable.Range(i, count);
+            var messages = await _client.GetMessages(channel, i);
+            if (messages.Messages.Length != 0)
+            {
+                var minId = messages.Messages.Min(m => m.ID);
+                _logger.LogInformation("First message ID found: {id}", minId);
+                return minId;
+            }
         }
     }
 }

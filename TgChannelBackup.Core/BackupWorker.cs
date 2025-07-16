@@ -29,52 +29,74 @@ public class BackupWorker : BackgroundService
     {
         await _telegramService.LogIn();
 
-        var lastId = _options.StartId ?? _backupDb.LastDownloadedId ?? 0;
-        _logger.LogInformation("Starting at message_id={message_id}", lastId);
+        var startId = _options.StartId ?? _backupDb.LastDownloadedId ?? 0;
+        _logger.LogInformation("Starting at message_id={message_id}", startId);
 
         var channel = await _telegramService.GetChannelById(_options.ChannelId);
 
-        await foreach (var messageBase in _telegramService.ScrollHistory(channel, minId: (int)lastId))
+        int totalWrites = 0, totalMismatches = 0, totalErrors = 0, totalCount = 0;
+
+        await foreach (var messageBase in _telegramService.ScrollHistory(channel, (int)startId))
         {
             if (messageBase is not Message message)
                 continue;
 
+            ProcessingResult result;
             try
             {
-                await ProcessMessage(message, ct);
+                result = await ProcessMessage(message, ct);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to archive {message_id}", message.ID);
+                result = new ProcessingResult() { Success = false };
             }
             
             _backupDb.LastDownloadedId = messageBase.ID;
+
+            if (result.HashMismatch)
+                totalMismatches++;
+
+            if (!result.Success)
+                totalErrors++;
+
+            if (result.Write)
+                totalWrites++;
+
+            totalCount++;
         }
+
+        _logger.LogInformation("Result: {cou} messages processed, {wri} files written, {mis} hash mismatches, {err} errors", totalCount, totalWrites, totalMismatches, totalErrors);
     }
 
-    private async Task ProcessMessage(Message message, CancellationToken ct)
+    private async Task<ProcessingResult> ProcessMessage(Message message, CancellationToken ct)
     {
+        var processingResult = new ProcessingResult();
+
         var postPath = BuildPath(_options.TargetDir, message);
         if (!_options.DryRun)
             Directory.CreateDirectory(postPath);
 
-        DownloadResult result = null;
+        DownloadResult downloadResult = null;
         if (message.media is MessageMediaPhoto photo)
         {
-            result = await _photoDownloader.Download(postPath, photo);
+            downloadResult = await _photoDownloader.Download(postPath, photo);
         }
         else if (message.media is MessageMediaDocument document)
         {
-            result = await _documentDownloader.Download(postPath, document);
+            downloadResult = await _documentDownloader.Download(postPath, document);
         }
 
-        if (result != null && !result.Success)
+        if (downloadResult != null && !downloadResult.Success)
         {
-            _logger.LogError("Error during downloading {fileId}: {error}", result.FileId, result.ErrorMessage);
-            return;
+            _logger.LogError("Error during downloading {fileId}: {error}", downloadResult.FileId, downloadResult.ErrorMessage);
+            return processingResult with { Success = false };
         }
+        
+        if (downloadResult != null)
+            processingResult = processingResult with { HashMismatch = downloadResult.HashMismatch, Write = downloadResult.Write };
 
-        var fileId = result?.FileId;
+        var fileId = downloadResult?.FileId;
         string metadataFilePath = Path.Combine(postPath, $"metadata_{message.ID}{(fileId != null ? $"_{fileId.Value}" : string.Empty)}.json");
 
         if (!_options.DryRun)
@@ -85,6 +107,8 @@ public class BackupWorker : BackgroundService
 
         /* _backupDb.Upsert(message.Peer.ID, message.Date.ToLocalTime(), message.ID, fileId, hash, metadataFilePath); */
         _logger.LogInformation("Processed post {messageID} from {date}", message.ID, message.Date);
+        
+        return processingResult;
     }
 
     private static string BuildPath(string basePath, Message message)
@@ -98,6 +122,13 @@ public class BackupWorker : BackgroundService
     }
 }
 
+public record ProcessingResult
+{
+    public bool Success { get; init; }
+    public bool Write { get; init; }
+    public bool HashMismatch { get; init; }
+}
+
 public record DownloadResult
 {
     public bool Success { get; init; }
@@ -105,4 +136,6 @@ public record DownloadResult
     public long FileId { get; init; }
     public string Hash { get; init; }
     public string ErrorMessage { get; init; }
+    public bool Write { get; init; }
+    public bool HashMismatch { get; init; }
 }
