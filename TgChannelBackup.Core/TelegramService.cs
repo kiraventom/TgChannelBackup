@@ -42,6 +42,12 @@ public class TelegramService : IAsyncDisposable
         await _client.LoginUserIfNeeded();
         _logger.LogInformation("Logged in as {user}", _client.User);
     }
+
+    public async Task DownloadFile(MessageMediaPhoto photo, string path)
+    {
+        await using var fs = File.OpenWrite(path);
+        await _client.DownloadFileAsync((Photo)photo.photo, fs);
+    }
     
     public async Task<InputPeerChannel> GetChannelById(long channelId)
     {

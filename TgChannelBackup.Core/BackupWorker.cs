@@ -54,8 +54,8 @@ public class BackupWorker : BackgroundService
         if (!_options.DryRun)
             Directory.CreateDirectory(postPath);
 
-        long fileId;
-        string hash;
+        long? fileId = null;
+        string hash = null;
         if (message.media is MessageMediaPhoto photo)
         {
             fileId = await DownloadPhotoIfNeeded(photo, postPath, ct);
@@ -66,10 +66,6 @@ public class BackupWorker : BackgroundService
             await DownloadDocumentIfNeeded(document, postPath, ct);
             fileId = 2;
             hash = "TODO";
-        }
-        else
-        {
-            return;
         }
 
         string metadataFilePath = Path.Combine(postPath, "metadata.json");
@@ -89,11 +85,7 @@ public class BackupWorker : BackgroundService
         bool fileExists = File.Exists(filePath);
 
         var tempPath = Path.GetTempFileName();
-        using (var s = File.OpenWrite(tempPath))
-        {
-            using var binaryWriter = new BinaryWriter(s);
-            photo.photo.WriteTL(binaryWriter);
-        }
+        await _telegramService.DownloadFile(photo, tempPath);
 
         bool writeFile = true;
         if (fileExists)

@@ -29,7 +29,7 @@ public class BackupDb : IDisposable
         _state.EnsureIndex(r => r.StateRecordId);
     }
 
-    public void Upsert(long channelId, DateTime dateTime, int messageId, long fileId, string hash, string metadataFileName)
+    public void Upsert(long channelId, DateTime dateTime, int messageId, long? fileId, string hash, string metadataFileName)
     {
         var channel = _channels.FindById(channelId);
         if (channel is null)
@@ -40,10 +40,11 @@ public class BackupDb : IDisposable
             channel.Days.Add(day = new DayRecord() { Date = DateOnly.FromDateTime(dateTime), Posts = []});
 
         var post = day.Posts.FirstOrDefault(p => p.MessageId == messageId);
-       if (post is null)
-           day.Posts.Add(post = new PostRecord() { MessageId = messageId, Time = TimeOnly.FromDateTime(dateTime), MetadataFileName = metadataFileName, Files = [] });
+        if (post is null)
+            day.Posts.Add(post = new PostRecord() { MessageId = messageId, Time = TimeOnly.FromDateTime(dateTime), MetadataFileName = metadataFileName, Files = [] });
 
-        post.Files.Add(new FileRecord() { FileId = fileId, Hash = hash });
+        if (fileId != null)
+            post.Files.Add(new FileRecord() { FileId = fileId.Value, Hash = hash });
     }
 
     public void Dispose()
