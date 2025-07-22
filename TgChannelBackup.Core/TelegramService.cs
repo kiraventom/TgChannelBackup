@@ -65,7 +65,6 @@ public class TelegramService : IAsyncDisposable
 
     public async IAsyncEnumerable<MessageBase> ScrollHistory(InputPeerChannel channel, int start)
     {
-        /* int offset = await CalculateOffset(channel, start); */
         int offset = start != 0 ? start : await GetFirstMessageId(channel);
 
         const int limit = 100;
@@ -77,13 +76,11 @@ public class TelegramService : IAsyncDisposable
                     add_offset: -limit,
                     limit: limit);
 
-            // TODO Fix stalling on last message
-
-            if (history.Messages.Length == 0)
-                break; // TODO Delay
-
             foreach (var message in history.Messages.OrderBy(m => m.ID))
                 yield return message;
+
+            if (history.Messages.Length <= 1)
+                break;
 
             offset = history.Messages.Max(m => m.ID);
         }

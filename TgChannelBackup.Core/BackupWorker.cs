@@ -14,8 +14,9 @@ public class BackupWorker : BackgroundService
     private readonly PhotoDownloader _photoDownloader;
     private readonly DocumentDownloader _documentDownloader;
     private readonly ILogger<BackupWorker> _logger;
+    private readonly IHostApplicationLifetime _lifetime;
 
-    public BackupWorker(TelegramService telegramService, BackupDb archiveIndex, RunOptions options, PhotoDownloader photoDownloader, DocumentDownloader documentDownloader, ILogger<BackupWorker> logger)
+    public BackupWorker(TelegramService telegramService, BackupDb archiveIndex, RunOptions options, PhotoDownloader photoDownloader, DocumentDownloader documentDownloader, ILogger<BackupWorker> logger, IHostApplicationLifetime lifetime)
     {
         _telegramService = telegramService;
         _backupDb = archiveIndex;
@@ -23,21 +24,24 @@ public class BackupWorker : BackgroundService
         _photoDownloader = photoDownloader;
         _documentDownloader = documentDownloader;
         _logger = logger;
+        _lifetime = lifetime;
     }
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
         await _telegramService.LogIn();
 
-        var startId = _options.StartId ?? _backupDb.LastDownloadedId ?? 0;
-        _logger.LogInformation("Starting at message_id={message_id}", startId);
-
         var channel = await _telegramService.GetChannelById(_options.ChannelId);
+
+        var startId = _options.StartId ?? _backupDb.GetLastDownloadedId(channel.ID) ?? 0;
+        _logger.LogInformation("Starting at message_id={message_id}", startId);
 
         int totalWrites = 0, totalMismatches = 0, totalErrors = 0, totalCount = 0;
 
         await foreach (var messageBase in _telegramService.ScrollHistory(channel, (int)startId))
         {
+            ct.ThrowIfCancellationRequested();
+
             if (messageBase is not Message message)
                 continue;
 
@@ -52,7 +56,7 @@ public class BackupWorker : BackgroundService
                 result = new ProcessingResult() { Success = false };
             }
             
-            _backupDb.LastDownloadedId = messageBase.ID;
+            _backupDb.SetLastDownloadedId(channel.ID, message.ID);
 
             if (result.HashMismatch)
                 totalMismatches++;
@@ -67,11 +71,12 @@ public class BackupWorker : BackgroundService
         }
 
         _logger.LogInformation("Result: {cou} messages processed, {wri} files written, {mis} hash mismatches, {err} errors", totalCount, totalWrites, totalMismatches, totalErrors);
+        _lifetime.StopApplication();
     }
 
     private async Task<ProcessingResult> ProcessMessage(Message message, CancellationToken ct)
     {
-        var processingResult = new ProcessingResult();
+        var processingResult = new ProcessingResult() { Success = true };
 
         var postPath = BuildPath(_options.TargetDir, message);
         if (!_options.DryRun)
@@ -105,7 +110,6 @@ public class BackupWorker : BackgroundService
             await File.WriteAllTextAsync(metadataFilePath, metadata, ct);
         }
 
-        /* _backupDb.Upsert(message.Peer.ID, message.Date.ToLocalTime(), message.ID, fileId, hash, metadataFilePath); */
         _logger.LogInformation("Processed post {messageID} from {date}", message.ID, message.Date);
         
         return processingResult;

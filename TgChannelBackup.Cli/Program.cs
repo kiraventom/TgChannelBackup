@@ -25,7 +25,7 @@ public static class Program
         var loggerConfig = new LoggerConfiguration()
             .MinimumLevel.Debug()
             .WriteTo.Console(restrictedToMinimumLevel: LogEventLevel.Information)
-            .WriteTo.File(Path.Combine(logsDir, "backup-.log"));
+            .WriteTo.File(Path.Combine(logsDir, "backup-.log"), rollingInterval: RollingInterval.Day);
 
         var logger = loggerConfig.CreateLogger();
 
@@ -39,7 +39,7 @@ public static class Program
         if (runOptions is null)
             return 1;
 
-        var backupPath = Path.Combine(appDir, "backup.db");
+        var backupPath = Path.Combine(appDir, "main.db");
 
         builder.Services
             .AddSerilog(logger)
