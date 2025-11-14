@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Hosting;
+﻿using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using TgChannelBackup.Core.Downloader;
@@ -31,9 +31,33 @@ public class BackupWorker : BackgroundService
     {
         await _telegramService.LogIn();
 
-        var channel = await _telegramService.GetChannelById(_options.ChannelId);
+        var channelId = _options.ChannelId;
+        var channel = await _telegramService.GetChannelById(channelId);
+        var commentGroup = await _telegramService.GetCommentsGroup(channel);
+        var commentGroupId = commentGroup?.ID;
 
-        var startId = _options.StartId ?? _backupDb.GetLastDownloadedId(channel.ID) ?? 0;
+        var startId = _options.StartId ?? _backupDb.GetLastPostId(channel.ID) ?? 0;
+
+        _logger.LogInformation("Processing {channelId} posts", channel.ID);
+        await ProcessMessages(channel, startId, m => _backupDb.SetLastPostId(channel.ID, m, commentGroupId), m => true, ct);
+        _logger.LogInformation("Processed {channelId} posts", channel.ID);
+
+        if (commentGroup is not null)
+        {
+            var commentsStartId = _backupDb.GetLastCommentId(commentGroup.ID) ?? 0;
+            _logger.LogInformation("Processing {channelId} comments {commentsGroupId}", commentGroup.ID);
+            await ProcessMessages(commentGroup, commentsStartId, 
+                m => _backupDb.SetLastCommentId(commentGroup.ID, m), 
+                m => m.from_id is not TL.PeerChannel,
+                ct);
+            _logger.LogInformation("Processed {channelId} comments {commentsGroupId}", commentGroup.ID);
+        }
+
+        _lifetime.StopApplication();
+    }
+
+    private async Task ProcessMessages(InputPeerChannel channel, long startId, Action<long> onSetLastId, Func<Message, bool> shouldSave, CancellationToken ct)
+    {
         _logger.LogInformation("Starting at message_id={message_id}", startId);
 
         int totalWrites = 0, totalMismatches = 0, totalErrors = 0, totalCount = 0;
@@ -44,6 +68,13 @@ public class BackupWorker : BackgroundService
 
             if (messageBase is not Message message)
                 continue;
+
+            if (!shouldSave(message))
+            {
+                _logger.LogDebug("Skipped message_id={message_id} due to condition", message.ID);
+                await Task.Delay(20);
+                continue;
+            }
 
             ProcessingResult result;
             try
@@ -56,7 +87,7 @@ public class BackupWorker : BackgroundService
                 result = new ProcessingResult() { Success = false };
             }
             
-            _backupDb.SetLastDownloadedId(channel.ID, message.ID);
+            onSetLastId(message.ID);
 
             if (result.HashMismatch)
                 totalMismatches++;
@@ -70,8 +101,7 @@ public class BackupWorker : BackgroundService
             totalCount++;
         }
 
-        _logger.LogInformation("Result: {cou} messages processed, {wri} files written, {mis} hash mismatches, {err} errors", totalCount, totalWrites, totalMismatches, totalErrors);
-        _lifetime.StopApplication();
+        _logger.LogInformation("Result: {cou} posts processed, {wri} files written, {mis} hash mismatches, {err} errors", totalCount, totalWrites, totalMismatches, totalErrors);
     }
 
     private async Task<ProcessingResult> ProcessMessage(Message message, CancellationToken ct)

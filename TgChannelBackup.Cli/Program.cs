@@ -51,6 +51,7 @@ public static class Program
             .AddHostedService<BackupWorker>();
 
         await builder.Build().RunAsync();
+
         return 0;
     }
 

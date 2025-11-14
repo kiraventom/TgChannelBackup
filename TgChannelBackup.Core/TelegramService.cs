@@ -86,6 +86,17 @@ public class TelegramService : IAsyncDisposable
         }
     }
 
+    public async Task<InputPeerChannel> GetCommentsGroup(InputPeerChannel channel)
+    {
+        var fullChannel = await _client.GetFullChat(channel);
+        var key = fullChannel.chats.Keys.FirstOrDefault(k => k != channel.channel_id);
+        if (key == default)
+            return null;
+
+        var groupChat = fullChannel.chats[key];
+        return (InputPeerChannel)groupChat.ToInputPeer();
+    }
+
     private async Task<int> GetFirstMessageId(InputPeerChannel channel)
     {
         var history = await _client.Messages_GetHistory(channel);
