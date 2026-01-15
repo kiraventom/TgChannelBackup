@@ -14,7 +14,9 @@ public static class Program
 
     public static async Task<int> Main(string[] args)
     {
-        DotNetEnv.Env.Load();
+        var envPath = Path.Combine(AppContext.BaseDirectory, DotNetEnv.Env.DEFAULT_ENVFILENAME);
+
+        DotNetEnv.Env.Load(envPath);
 
         var builder = Host.CreateApplicationBuilder();
 
