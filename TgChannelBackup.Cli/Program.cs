@@ -45,11 +45,13 @@ public static class Program
 
         builder.Services
             .AddSerilog(logger)
-            .AddSingleton(runOptions)
+            .AddSingleton<IRunOptions>(runOptions)
+            .AddSingleton<IDownloadOptions>(runOptions)
             .AddSingleton<BackupDb>(c => new BackupDb(backupPath))
             .AddSingleton<TelegramService>()
             .AddSingleton<PhotoDownloader>()
             .AddSingleton<DocumentDownloader>()
+            .AddSingleton<MessageProcessor>()
             .AddHostedService<BackupWorker>();
 
         await builder.Build().RunAsync();

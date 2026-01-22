@@ -1,6 +1,8 @@
-namespace TgChannelBackup.Core;
+﻿using TgChannelBackup.Core;
 
-public record RunOptions
+namespace TgChannelBackup.Cli;
+
+public record RunOptions : IRunOptions
 {
     public long ChannelId { get; init; }
     public string TargetDir { get; init; }
@@ -9,3 +11,4 @@ public record RunOptions
     public bool DryRun { get; init; }
     public bool Reconcile { get; init; }
 }
+

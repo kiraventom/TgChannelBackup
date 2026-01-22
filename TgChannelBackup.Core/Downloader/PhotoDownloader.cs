@@ -5,7 +5,7 @@ namespace TgChannelBackup.Core.Downloader;
 
 public class PhotoDownloader : MediaDownloader<MessageMediaPhoto>
 {
-    public PhotoDownloader(ILogger<MediaDownloader<MessageMediaPhoto>> logger, RunOptions runOptions, TelegramService telegramService) : base(logger, runOptions, telegramService)
+    public PhotoDownloader(ILogger<MediaDownloader<MessageMediaPhoto>> logger, IDownloadOptions downloadOptions, TelegramService telegramService) : base(logger, downloadOptions, telegramService)
     {
     }
 

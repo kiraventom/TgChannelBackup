@@ -7,13 +7,13 @@ namespace TgChannelBackup.Core.Downloader;
 public abstract class MediaDownloader<T> where T : MessageMedia
 {
     protected readonly ILogger<MediaDownloader<T>> _logger;
-    protected readonly RunOptions _runOptions;
+    protected readonly IDownloadOptions _downloadOptions;
     protected readonly TelegramService _telegramService;
 
-    protected MediaDownloader(ILogger<MediaDownloader<T>> logger, RunOptions runOptions, TelegramService telegramService)
+    protected MediaDownloader(ILogger<MediaDownloader<T>> logger, IDownloadOptions downloadOptions, TelegramService telegramService)
     {
         _logger = logger;
-        _runOptions = runOptions;
+        _downloadOptions = downloadOptions;
         _telegramService = telegramService;
     }
 
@@ -59,7 +59,7 @@ public abstract class MediaDownloader<T> where T : MessageMedia
             if (hashMismatch)
             {
                 _logger.LogWarning("File {path} hash mismatch, {existingHash} != {newHash}", filePath, existingHash, newHash);
-                if (_runOptions.Reconcile)
+                if (_downloadOptions.Reconcile)
                     writeFile = true;
             }
             else
@@ -68,7 +68,7 @@ public abstract class MediaDownloader<T> where T : MessageMedia
             }
         }
 
-        if (_runOptions.DryRun)
+        if (_downloadOptions.DryRun)
             writeFile = false;
 
         if (writeFile)
